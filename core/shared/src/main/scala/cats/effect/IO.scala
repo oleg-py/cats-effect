@@ -22,7 +22,6 @@ import cats.effect.internals._
 import cats.effect.internals.Callback.Extensions
 import cats.effect.internals.TrampolineEC.immediate
 import cats.effect.internals.IOPlatform.fusionMaxStackDepth
-
 import scala.annotation.unchecked.uncheckedVariance
 import scala.concurrent.{ExecutionContext, Future, Promise}
 import scala.concurrent.duration._
@@ -310,6 +309,7 @@ sealed abstract class IO[+A] extends internals.IOBinaryCompat[A] {
    * of functionality, you should be using a streaming library (like
    * fs2 or Monix).
    *
+   * @see [[timeout]]
    * @see [[unsafeRunSync]]
    */
   final def unsafeRunTimed(limit: Duration): Option[A] =
@@ -608,6 +608,39 @@ sealed abstract class IO[+A] extends internals.IOBinaryCompat[A] {
     case RaiseError(e) => s"IO(throw $e)"
     case _ => "IO$" + System.identityHashCode(this)
   }
+
+  /**
+   * Returns a new value that tries to evaluate the source for specified
+   * period of time. If evaluation does not complete within specified duration,
+   * the fallback will be used to provide result, while the source will be canceled.
+   *
+   * NOTE: cancellation does not mean immediate interruption for [[IO]]. It will
+   * continue to run in background until an operation constructed with [[IO.cancelable]],
+   * or an [[IO.cancelBoundary]] is hit.
+   *
+   * @see [[timeout]] for a version that fails with a `TimeoutException`
+   * @see [[Concurrent$.timeoutTo Concurrent.timeoutTo]] (on the object companion) for
+   *     a version that is polymorphic in effect type
+   */
+  final def timeoutTo[B >: A](after: FiniteDuration, fallback: IO[B])(implicit timer: Timer[IO]): IO[B] =
+    Concurrent.timeoutTo(this, after, fallback)
+
+  /**
+   * Returns a new value that tries to evaluate the source for specified
+   * period of time. If evaluation does not complete within specified duration,
+   * the result will be failed with `TimeoutException` and the source will be
+   * canceled.
+   *
+   * NOTE: cancellation does not mean immediate interruption for [[IO]]. It will
+   * continue to run in background until an operation constructed with [[IO.cancelable]],
+   * or an [[IO.cancelBoundary]] is hit.
+   *
+   * @see [[timeoutTo]] for a version with a fallback instead.
+   * @see [[Concurrent$.timeout Concurrent.timeout]] (on the object companion) for
+   *     a version that is polymorphic in effect type
+   */
+  final def timeout(after: FiniteDuration)(implicit timer: Timer[IO]): IO[A] =
+    Concurrent.timeout(this, after)
 }
 
 private[effect] abstract class IOParallelNewtype

@@ -22,9 +22,11 @@ import cats.data._
 import cats.effect.IO.{Delay, Pure, RaiseError}
 import cats.effect.internals.IORunLoop
 import cats.syntax.all._
-
 import scala.annotation.implicitNotFound
+import scala.concurrent.duration.FiniteDuration
 import scala.util.Either
+
+import java.util.concurrent.TimeoutException
 
 /**
  * Type class for [[Async]] data types that are cancelable and
@@ -423,6 +425,22 @@ object Concurrent {
           }
         }
     }
+
+  /**
+   *
+   */
+  def timeoutTo[F[_], A](source: F[A], after: FiniteDuration, fallback: F[A])(implicit F: Concurrent[F], timer: Timer[F]): F[A] = {
+    F.race(timer.sleep(after), source).flatMap {
+      case Right(a) => F.pure(a)
+      case Left(_) => fallback
+    }
+  }
+
+  /**
+   *
+   */
+  def timeout[F[_], A](source: F[A], after: FiniteDuration)(implicit F: Concurrent[F], timer: Timer[F]): F[A] =
+    timeoutTo(source, after, F.raiseError(new TimeoutException(s"Timed out after $after")))
 
   /**
    * [[Concurrent]] instance built for `cats.data.EitherT` values initialized
